@@ -38,6 +38,17 @@
     gap: 0;
     height: calc(100vh - 52px);
   }
+  @media (max-width: 700px) {
+    .workspace {
+      grid-template-columns: 1fr;
+      height: auto;
+    }
+    .editor-pane { border-right: none; border-bottom: 0.5px solid rgba(0,0,0,0.1); }
+    .editor-pane textarea { min-height: 200px; }
+    .preview-pane { min-height: 400px; }
+    .topbar-hint { display: none; }
+    .bottombar { flex-wrap: wrap; gap: 8px; }
+  }
 
   /* ── Editor pane ── */
   .editor-pane {
@@ -347,27 +358,38 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-// ── Export ──
+// ── Export — always 800px wide regardless of screen ──
+const EXPORT_WIDTH = 800;
+
 function doExport() {
   const btn = document.getElementById('export-btn');
   btn.disabled = true;
   btn.textContent = '生成中…';
 
-  const card = document.getElementById('export-wrapper');
   const scale = parseInt(document.getElementById('scale-select').value);
+  const source = document.getElementById('export-wrapper');
+  const wrapperBg = source.style.background || '#e5e5ea';
 
-  html2canvas(card, {
+  // Build a hidden ghost div at fixed 800px so output is always consistent
+  const ghost = source.cloneNode(true);
+  ghost.style.cssText =
+    'position:fixed;top:-99999px;left:-99999px;' +
+    'width:' + EXPORT_WIDTH + 'px;max-width:' + EXPORT_WIDTH + 'px;' +
+    'border-radius:28px;padding:32px;box-sizing:border-box;' +
+    'background:' + wrapperBg + ';';
+  document.body.appendChild(ghost);
+
+  html2canvas(ghost, {
     scale: scale,
     useCORS: true,
     allowTaint: true,
     backgroundColor: null,
     logging: false,
-    onclone: function(clonedDoc) {
-      const clonedWrapper = clonedDoc.getElementById('export-wrapper');
-      if (clonedWrapper) clonedWrapper.style.borderRadius = '28px';
-    }
+    width: EXPORT_WIDTH,
   }).then(canvas => {
-    // Add rounded corners
+    document.body.removeChild(ghost);
+
+    // Clip to rounded corners
     const out = document.createElement('canvas');
     const r = 28 * scale;
     out.width  = canvas.width;
@@ -392,10 +414,11 @@ function doExport() {
     a.href = out.toDataURL('image/png');
     a.click();
 
-    showToast('✅ 图片已保存到下载文件夹');
+    showToast('✅ 图片已保存到下载文件夹（宽度固定 ' + EXPORT_WIDTH + 'px）');
     btn.textContent = '✓ 已导出';
     setTimeout(() => { btn.textContent = '↓ 导出 PNG'; btn.disabled = false; }, 2500);
   }).catch(err => {
+    if (document.body.contains(ghost)) document.body.removeChild(ghost);
     showToast('❌ 导出失败：' + err.message);
     btn.textContent = '↓ 导出 PNG';
     btn.disabled = false;
