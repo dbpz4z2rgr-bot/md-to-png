@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markdown → PNG 图片导出工具</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    background: #f2f2f7; min-height: 100vh; color: #1c1c1e;
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 0.5px solid rgba(0,0,0,0.1);
+    padding: 0 24px;
+    height: 52px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot-r { background: #FF5F57; } .dot-y { background: #FFBD2E; } .dot-g { background: #28C840; }
+  .topbar h1 { font-size: 14px; font-weight: 600; color: #1c1c1e; letter-spacing: -0.2px; }
+  .topbar-hint { font-size: 12px; color: #8e8e93; }
+
+  /* ── Layout ── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    height: calc(100vh - 52px);
+  }
+
+  /* ── Editor pane ── */
+  .editor-pane {
+    display: flex; flex-direction: column;
+    border-right: 0.5px solid rgba(0,0,0,0.1);
+    background: #fff;
+  }
+  .pane-header {
+    padding: 12px 20px 10px;
+    border-bottom: 0.5px solid rgba(0,0,0,0.06);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .pane-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+    text-transform: uppercase; color: #8e8e93;
+  }
+  textarea {
+    flex: 1; padding: 20px; font-size: 14px; line-height: 1.75;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+    border: none; outline: none; resize: none;
+    color: #1c1c1e; background: #fff;
+  }
+
+  /* ── Preview pane ── */
+  .preview-pane {
+    display: flex; flex-direction: column;
+    background: #f2f2f7; overflow-y: auto;
+  }
+  .preview-toolbar {
+    padding: 10px 16px;
+    border-bottom: 0.5px solid rgba(0,0,0,0.08);
+    background: rgba(242,242,247,0.9);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(12px);
+  }
+  .theme-btn {
+    padding: 5px 13px; border-radius: 20px; font-size: 12px; cursor: pointer;
+    border: 0.5px solid rgba(0,0,0,0.15);
+    background: rgba(255,255,255,0.7);
+    color: #3a3a3c; transition: all 0.15s; font-weight: 500;
+  }
+  .theme-btn:hover { background: #fff; }
+  .theme-btn.active { background: #1c1c1e; color: #fff; border-color: #1c1c1e; }
+
+  .preview-canvas {
+    flex: 1; padding: 28px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 0;
+  }
+
+  /* ── Card styles ── */
+  #apple-card {
+    width: 100%; max-width: 600px;
+    border-radius: 20px;
+    padding: 36px 36px 32px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+    transition: background 0.25s, color 0.25s;
+    word-break: break-word;
+  }
+
+  /* Themes */
+  .t-white { background: #ffffff; color: #1c1c1e; }
+  .t-dark  { background: #1c1c1e; color: #f2f2f7; }
+  .t-sand  { background: #faf7f2; color: #2c2416; }
+  .t-ocean { background: #0d2137; color: #e8f4fd; }
+  .t-bloom { background: linear-gradient(145deg, #fff5f8 0%, #fff0f5 100%); color: #3a0a1a; }
+  .t-ink   { background: #1a1a2e; color: #e8e8f0; }
+
+  /* Card typography */
+  #apple-card .card-label {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 20px; margin-bottom: 18px;
+  }
+  .t-white .card-label { background: #eef3ff; color: #2351cc; }
+  .t-dark  .card-label { background: rgba(10,132,255,0.2); color: #4da3ff; }
+  .t-sand  .card-label { background: #f0e8c0; color: #7a5200; }
+  .t-ocean .card-label { background: rgba(90,200,250,0.18); color: #5ac8fa; }
+  .t-bloom .card-label { background: rgba(255,45,85,0.1); color: #cc003a; }
+  .t-ink   .card-label { background: rgba(130,130,255,0.18); color: #9898ff; }
+
+  #apple-card h1 { font-size: 22px; font-weight: 700; line-height: 1.28; margin-bottom: 14px; letter-spacing: -0.5px; }
+  #apple-card h2 { font-size: 18px; font-weight: 600; line-height: 1.3; margin: 20px 0 8px; letter-spacing: -0.3px; }
+  #apple-card h3 { font-size: 15px; font-weight: 600; line-height: 1.35; margin: 16px 0 6px; }
+  #apple-card p  { font-size: 15px; line-height: 1.75; margin-bottom: 12px; opacity: 0.88; }
+  #apple-card ul, #apple-card ol { padding-left: 20px; margin-bottom: 12px; }
+  #apple-card li { font-size: 15px; line-height: 1.75; opacity: 0.85; margin-bottom: 2px; }
+  #apple-card strong { font-weight: 700; opacity: 1; }
+  #apple-card em { font-style: italic; }
+  #apple-card hr { border: none; margin: 16px 0; opacity: 0.15; height: 0.5px; background: currentColor; }
+
+  #apple-card code {
+    font-family: 'SF Mono','Menlo','Monaco',monospace;
+    font-size: 13px; padding: 2px 7px; border-radius: 6px;
+  }
+  .t-white #apple-card code, #apple-card.t-white code { background: #f2f2f7; color: #d70015; }
+  .t-dark  #apple-card code, #apple-card.t-dark  code { background: #2c2c2e; color: #ff6961; }
+  .t-sand  #apple-card code, #apple-card.t-sand  code { background: #ede8df; color: #7a3000; }
+  .t-ocean #apple-card code, #apple-card.t-ocean code { background: rgba(255,255,255,0.1); color: #64d2ff; }
+  .t-bloom #apple-card code, #apple-card.t-bloom code { background: rgba(255,45,85,0.08); color: #cc003a; }
+  .t-ink   #apple-card code, #apple-card.t-ink   code { background: rgba(255,255,255,0.08); color: #9898ff; }
+
+  #apple-card blockquote {
+    border-left: 3px solid; margin: 14px 0; padding: 8px 16px;
+    border-radius: 0 10px 10px 0; font-size: 15px; line-height: 1.65;
+    opacity: 0.9;
+  }
+  #apple-card.t-white blockquote { border-color: #007aff; background: #f0f7ff; }
+  #apple-card.t-dark  blockquote { border-color: #0a84ff; background: rgba(10,132,255,0.08); }
+  #apple-card.t-sand  blockquote { border-color: #b07800; background: rgba(176,120,0,0.07); }
+  #apple-card.t-ocean blockquote { border-color: #5ac8fa; background: rgba(90,200,250,0.08); }
+  #apple-card.t-bloom blockquote { border-color: #ff2d55; background: rgba(255,45,85,0.05); }
+  #apple-card.t-ink   blockquote { border-color: #9898ff; background: rgba(152,152,255,0.08); }
+
+  /* ── Bottom bar ── */
+  .bottombar {
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(20px);
+    border-top: 0.5px solid rgba(0,0,0,0.1);
+    padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; bottom: 0; z-index: 100;
+  }
+  .bottombar-left { display: flex; align-items: center; gap: 12px; }
+  .tag-label { font-size: 12px; color: #8e8e93; }
+  .tag-input {
+    padding: 6px 14px; font-size: 13px; border-radius: 20px;
+    border: 0.5px solid rgba(0,0,0,0.18);
+    background: #f2f2f7; color: #1c1c1e; outline: none;
+    font-family: -apple-system, 'SF Pro Text', sans-serif;
+    width: 260px;
+  }
+  .tag-input:focus { border-color: #007aff; background: #fff; }
+
+  .export-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 24px; border-radius: 22px;
+    background: #007aff; color: #fff; border: none;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: -apple-system, 'SF Pro Text', sans-serif;
+    transition: all 0.15s; letter-spacing: -0.2px;
+  }
+  .export-btn:hover { background: #0066d6; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,122,255,0.35); }
+  .export-btn:active { transform: translateY(0); box-shadow: none; }
+  .export-btn:disabled { background: #aeaeb2; cursor: default; transform: none; box-shadow: none; }
+
+  .size-select {
+    padding: 6px 10px; font-size: 12px; border-radius: 10px;
+    border: 0.5px solid rgba(0,0,0,0.15);
+    background: #f2f2f7; color: #1c1c1e; outline: none;
+    font-family: -apple-system, sans-serif; cursor: pointer;
+  }
+
+  /* notification */
+  .toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #1c1c1e; color: #fff; padding: 10px 20px; border-radius: 20px;
+    font-size: 13px; font-weight: 500; opacity: 0;
+    transition: all 0.3s; pointer-events: none; z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="dots">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+    </div>
+    <h1>Markdown → PNG</h1>
+  </div>
+  <span class="topbar-hint">粘贴 Notion 内容，一键导出图片</span>
+</div>
+
+<div class="workspace">
+  <!-- Editor -->
+  <div class="editor-pane">
+    <div class="pane-header">
+      <span class="pane-label">Markdown 输入</span>
+      <span style="font-size:12px;color:#8e8e93;" id="char-count">0 字</span>
+    </div>
+    <textarea id="md-input" spellcheck="false" placeholder="在这里粘贴你的 Notion 笔记…">
+# 今日想法 ✨
+
+今天思考了一件很重要的事：
+
+> 专注做一件事，胜过分心做十件事。
+
+## 行动清单
+
+- **深度工作** 每天至少 2 小时
+- 减少无效刷手机的时间
+- 每晚回顾当天的收获
+
+## 一句话总结
+
+*进步不在于速度，而在于方向。*
+</textarea>
+  </div>
+
+  <!-- Preview -->
+  <div class="preview-pane">
+    <div class="preview-toolbar">
+      <span style="font-size:11px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:#8e8e93;margin-right:4px;">风格</span>
+      <button class="theme-btn active" onclick="setTheme('white',this)">☀ 纯白</button>
+      <button class="theme-btn" onclick="setTheme('dark',this)">🌙 深色</button>
+      <button class="theme-btn" onclick="setTheme('sand',this)">🌿 奶油</button>
+      <button class="theme-btn" onclick="setTheme('ocean',this)">🌊 深海</button>
+      <button class="theme-btn" onclick="setTheme('bloom',this)">🌸 花开</button>
+      <button class="theme-btn" onclick="setTheme('ink',this)">🖋 墨水</button>
+    </div>
+    <div class="preview-canvas" id="preview-canvas">
+      <div id="export-wrapper" style="padding:32px;border-radius:28px;background:#f2f2f7;width:100%;max-width:664px;">
+        <div id="apple-card" class="t-white">
+          <div class="card-label" id="card-label">Notion 笔记</div>
+          <div id="preview-content"></div>
+          <div id="watermark" style="text-align:right;margin-top:16px;font-size:12px;font-weight:500;opacity:0.3;letter-spacing:0.02em;">Theo</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bottombar">
+  <div class="bottombar-left">
+    <span class="tag-label">标签文字</span>
+    <input class="tag-input" id="tag-input" value="" oninput="updateLabel()" />
+    <span class="tag-label" style="margin-left:8px;">水印</span>
+    <input class="tag-input" id="watermark-input" value="@Theo" oninput="updateWatermark()" style="width:100px;" />
+    <select class="size-select" id="scale-select">
+      <option value="2">1x 标清</option>
+      <option value="3" selected>2x 高清</option>
+      <option value="4">3x 超清</option>
+    </select>
+  </div>
+  <button class="export-btn" id="export-btn" onclick="doExport()">
+    ↓ 导出 PNG
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let currentTheme = 'white';
+
+// ── Set default label to local time ──
+function getLocalTimeLabel() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const mo = now.getMonth() + 1;
+  const d = now.getDate();
+  const days = ['日','一','二','三','四','五','六'];
+  const w = days[now.getDay()];
+  const h = String(now.getHours()).padStart(2, '0');
+  const mi = String(now.getMinutes()).padStart(2, '0');
+  return `${y} 年 ${mo} 月 ${d} 日 星期${w} ${h}：${mi}`;
+}
+const defaultLabel = getLocalTimeLabel();
+document.getElementById('tag-input').value = defaultLabel;
+document.getElementById('card-label').textContent = defaultLabel;
+
+// ── Render markdown ──
+function render() {
+  const md = document.getElementById('md-input').value;
+  document.getElementById('preview-content').innerHTML = marked.parse(md);
+  document.getElementById('char-count').textContent = md.length + ' 字';
+}
+
+document.getElementById('md-input').addEventListener('input', render);
+render();
+
+// ── Theme ──
+function setTheme(t, btn) {
+  currentTheme = t;
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const card = document.getElementById('apple-card');
+  card.className = 't-' + t;
+
+  const bgMap = {
+    white: '#e5e5ea', dark: '#000000', sand: '#e0d8c8',
+    ocean: '#071420', bloom: '#f5d0de', ink: '#10101e'
+  };
+  const bg = bgMap[t] || '#e5e5ea';
+  document.getElementById('preview-canvas').style.background = bg;
+  document.getElementById('export-wrapper').style.background = bg;
+}
+
+// ── Label ──
+function updateLabel() {
+  document.getElementById('card-label').textContent = document.getElementById('tag-input').value;
+}
+
+// ── Watermark ──
+function updateWatermark() {
+  document.getElementById("watermark").textContent = document.getElementById("watermark-input").value;
+}
+
+// ── Toast ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Export ──
+function doExport() {
+  const btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  btn.textContent = '生成中…';
+
+  const card = document.getElementById('export-wrapper');
+  const scale = parseInt(document.getElementById('scale-select').value);
+
+  html2canvas(card, {
+    scale: scale,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: null,
+    logging: false,
+    onclone: function(clonedDoc) {
+      const clonedWrapper = clonedDoc.getElementById('export-wrapper');
+      if (clonedWrapper) clonedWrapper.style.borderRadius = '28px';
+    }
+  }).then(canvas => {
+    // Add rounded corners
+    const out = document.createElement('canvas');
+    const r = 28 * scale;
+    out.width  = canvas.width;
+    out.height = canvas.height;
+    const ctx = out.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(r, 0);
+    ctx.lineTo(out.width - r, 0);
+    ctx.quadraticCurveTo(out.width, 0, out.width, r);
+    ctx.lineTo(out.width, out.height - r);
+    ctx.quadraticCurveTo(out.width, out.height, out.width - r, out.height);
+    ctx.lineTo(r, out.height);
+    ctx.quadraticCurveTo(0, out.height, 0, out.height - r);
+    ctx.lineTo(0, r);
+    ctx.quadraticCurveTo(0, 0, r, 0);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(canvas, 0, 0);
+
+    const a = document.createElement('a');
+    a.download = 'notion-card-' + Date.now() + '.png';
+    a.href = out.toDataURL('image/png');
+    a.click();
+
+    showToast('✅ 图片已保存到下载文件夹');
+    btn.textContent = '✓ 已导出';
+    setTimeout(() => { btn.textContent = '↓ 导出 PNG'; btn.disabled = false; }, 2500);
+  }).catch(err => {
+    showToast('❌ 导出失败：' + err.message);
+    btn.textContent = '↓ 导出 PNG';
+    btn.disabled = false;
+  });
+}
+</script>
+</body>
+</html>
