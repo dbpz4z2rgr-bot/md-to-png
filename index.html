@@ -53,7 +53,7 @@
     #apple-card { padding: 20px 18px 18px !important; }
   }
 
-  /* ── Editor pane ── */
+  /* ── Editor pane ─�� */
   .editor-pane {
     display: flex; flex-direction: column;
     border-right: 0.5px solid rgba(0,0,0,0.1);
@@ -237,7 +237,7 @@
       <span class="pane-label">Markdown 输入</span>
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-size:12px;color:#8e8e93;" id="char-count">0 字</span>
-        <button onclick="clearText()" style="font-size:12px;color:#ff3b30;background:none;border:0.5px solid rgba(255,59,48,0.3);border-radius:12px;padding:3px 10px;cursor:pointer;font-family:-apple-system,sans-serif;">清空</button>
+        <button onclick="clearText()" style="font-size:12px;color:#ff3b30;background:none;border:0.5px solid rgba(255,59,48,0.3);border-radius:12px;padding:3px 10px;cursor:pointer;font-family:-apple-system;">清空</button>
       </div>
     </div>
     <textarea id="md-input" spellcheck="false" placeholder="在这里粘贴你的 Notion 笔记…">
@@ -373,9 +373,10 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-// ── Export with perfect symmetrical margins using flexbox ──
+// ── Export — 1000px wide with balanced padding ──
 const EXPORT_WIDTH = 1000;
 const CARD_WIDTH = 800;
+const SIDE_PADDING = (EXPORT_WIDTH - CARD_WIDTH) / 2; // 100px each side
 
 function doExport() {
   const btn = document.getElementById('export-btn');
@@ -386,24 +387,17 @@ function doExport() {
   const source = document.getElementById('export-wrapper');
   const wrapperBg = source.style.background || '#e5e5ea';
 
-  // Build a hidden container with flexbox centering for perfect symmetry
+  // Build a hidden container at fixed 1000px with balanced padding
   const container = document.createElement('div');
   container.style.cssText =
     'position:fixed;top:-99999px;left:-99999px;' +
     'width:' + EXPORT_WIDTH + 'px;height:auto;' +
     'background:' + wrapperBg + ';' +
-    'box-sizing:border-box;' +
-    'display:flex;' +
-    'align-items:center;' +
-    'justify-content:center;' +
-    'padding:0;margin:0;';
+    'padding:' + SIDE_PADDING + 'px;' +
+    'box-sizing:border-box;';
 
   const ghost = source.cloneNode(true);
-  ghost.style.cssText = 
-    'width:' + CARD_WIDTH + 'px;' +
-    'margin:0;' +
-    'flex-shrink:0;';
-  
+  ghost.style.cssText = 'width:' + CARD_WIDTH + 'px;margin:0 auto;';
   container.appendChild(ghost);
   document.body.appendChild(container);
 
