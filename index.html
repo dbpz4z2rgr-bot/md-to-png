@@ -53,7 +53,7 @@
     #apple-card { padding: 20px 18px 18px !important; }
   }
 
-  /* ── Editor pane ─�� */
+  /* ── Editor pane ── */
   .editor-pane {
     display: flex; flex-direction: column;
     border-right: 0.5px solid rgba(0,0,0,0.1);
@@ -237,7 +237,7 @@
       <span class="pane-label">Markdown 输入</span>
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-size:12px;color:#8e8e93;" id="char-count">0 字</span>
-        <button onclick="clearText()" style="font-size:12px;color:#ff3b30;background:none;border:0.5px solid rgba(255,59,48,0.3);border-radius:12px;padding:3px 10px;cursor:pointer;font-family:-apple-system;">清空</button>
+        <button onclick="clearText()" style="font-size:12px;color:#ff3b30;background:none;border:0.5px solid rgba(255,59,48,0.3);border-radius:12px;padding:3px 10px;cursor:pointer;font-family:-apple-system,sans-serif;">清空</button>
       </div>
     </div>
     <textarea id="md-input" spellcheck="false" placeholder="在这里粘贴你的 Notion 笔记…">
@@ -373,10 +373,8 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-// ── Export — 1000px wide with balanced padding ──
-const EXPORT_WIDTH = 1000;
-const CARD_WIDTH = 800;
-const SIDE_PADDING = (EXPORT_WIDTH - CARD_WIDTH) / 2; // 100px each side
+// ── Export — fixed mobile-friendly width for consistent output ──
+const EXPORT_WIDTH = 600;
 
 function doExport() {
   const btn = document.getElementById('export-btn');
@@ -387,21 +385,25 @@ function doExport() {
   const source = document.getElementById('export-wrapper');
   const wrapperBg = source.style.background || '#e5e5ea';
 
-  // Build a hidden container at fixed 1000px with balanced padding
-  const container = document.createElement('div');
-  container.style.cssText =
-    'position:fixed;top:-99999px;left:-99999px;' +
-    'width:' + EXPORT_WIDTH + 'px;height:auto;' +
-    'background:' + wrapperBg + ';' +
-    'padding:' + SIDE_PADDING + 'px;' +
-    'box-sizing:border-box;';
-
+  // Build a hidden ghost div at fixed 600px so output is always consistent
   const ghost = source.cloneNode(true);
-  ghost.style.cssText = 'width:' + CARD_WIDTH + 'px;margin:0 auto;';
-  container.appendChild(ghost);
-  document.body.appendChild(container);
+  ghost.style.cssText =
+    'position:fixed;top:-99999px;left:-99999px;' +
+    'width:' + EXPORT_WIDTH + 'px;max-width:' + EXPORT_WIDTH + 'px;' +
+    'border-radius:20px;padding:20px;box-sizing:border-box;' +
+    'background:' + wrapperBg + ';';
 
-  html2canvas(container, {
+  // Override card width & padding so it fills the wrapper evenly
+  const ghostCard = ghost.querySelector('#apple-card');
+  if (ghostCard) {
+    ghostCard.style.maxWidth = 'none';
+    ghostCard.style.width = '100%';
+    ghostCard.style.padding = '24px 24px 20px';
+  }
+
+  document.body.appendChild(ghost);
+
+  html2canvas(ghost, {
     scale: scale,
     useCORS: true,
     allowTaint: true,
@@ -409,11 +411,11 @@ function doExport() {
     logging: false,
     width: EXPORT_WIDTH,
   }).then(canvas => {
-    document.body.removeChild(container);
+    document.body.removeChild(ghost);
 
     // Clip to rounded corners
     const out = document.createElement('canvas');
-    const r = 28 * scale;
+    const r = 20 * scale;
     out.width  = canvas.width;
     out.height = canvas.height;
     const ctx = out.getContext('2d');
@@ -436,11 +438,11 @@ function doExport() {
     a.href = out.toDataURL('image/png');
     a.click();
 
-    showToast('✅ 图片已保存（' + EXPORT_WIDTH + 'px 宽，两侧均匀填充）');
+    showToast('✅ 图片已保存（宽度 ' + EXPORT_WIDTH + 'px，适配手机屏幕）');
     btn.textContent = '✓ 已导出';
     setTimeout(() => { btn.textContent = '↓ 导出 PNG'; btn.disabled = false; }, 2500);
   }).catch(err => {
-    if (document.body.contains(container)) document.body.removeChild(container);
+    if (document.body.contains(ghost)) document.body.removeChild(ghost);
     showToast('❌ 导出失败：' + err.message);
     btn.textContent = '↓ 导出 PNG';
     btn.disabled = false;
